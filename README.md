@@ -37,7 +37,7 @@ Some other examples:
 
 ```julia
   | | |_| | | | (_| |  |  Version 0.5.0-rc1+1 (2016-08-05 15:23 UTC)
- _/ |\__'_|_|_|\__'_|  |  Commit acfd04c (8 days old release-0.5)
+ _/ |\__'_|_|_|\__'_|  |  Commit acfd04c (10 days old release-0.5)
 |__/                   |  x86_64-apple-darwin13.4.0
 
 julia> using SQLQuery
@@ -61,8 +61,18 @@ SELECT foo * 3 AS name,
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
-       select(distinct(name = foo * 3, col))
+       distinct(name = foo * 3, col)
 SELECT DISTINCT foo * 3 AS name,
+                col
+  FROM (SELECT *
+          FROM source
+         WHERE name == 3
+           AND bar == "whee")
+
+julia> @sqlquery source |>
+       filter(name == 3, bar == "whee") |>
+       select(name = foo * 3, col)
+SELECT foo * 3 AS name,
        col
   FROM (SELECT *
           FROM source
@@ -71,9 +81,8 @@ SELECT DISTINCT foo * 3 AS name,
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
-       select(all(name = foo * 3, col))
-SELECT ALL foo * 3 AS name,
-       col
+       select(*)
+SELECT *
   FROM (SELECT *
           FROM source
          WHERE name == 3
@@ -81,16 +90,7 @@ SELECT ALL foo * 3 AS name,
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
-       select(all(*))
-SELECT ALL *
-  FROM (SELECT *
-          FROM source
-         WHERE name == 3
-           AND bar == "whee")
-
-julia> @sqlquery source |>
-       filter(name == 3, bar == "whee") |>
-       select(distinct(*))
+       distinct(*)
 SELECT DISTINCT *
   FROM (SELECT *
           FROM source
@@ -99,7 +99,7 @@ SELECT DISTINCT *
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
-       select(distinct(col))
+       distinct(col)
 SELECT DISTINCT col
   FROM (SELECT *
           FROM source
@@ -246,6 +246,7 @@ SELECT *
                              AND bar == "whee"))
         ORDER BY name DESC)
  LIMIT -1 OFFSET 7
+
 
 julia> @sqlquery Artists |>
        leftjoin(Songs) |>
