@@ -20,8 +20,7 @@ _sqlexpr(ex::QueryArg) = "$ex"
 
 translatesql(q::Symbol, offset::Int) = ident(q) # table-name
 _translatesubquery(q::Symbol, offset::Int) = ident(q)
-_translatesubquery(q::QueryNode, offset::Int) =
-    "($(translatesql(q.input, offset)))"
+_translatesubquery(q::QueryNode, offset::Int) = "($(translatesql(q, offset)))"
 
 _selectarg(a::Symbol) = string(a) # assume it corresponds to a column-name
 
@@ -154,13 +153,17 @@ end
 function translatesql(q::LimitNode, offset::Int=0)
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
-    "SELECT *\n $indent FROM $source\n$(indent) LIMIT $(q.limit)"
+    @assert length(q.limit) == 1
+    @assert isa(q.limit[1], Integer)
+    "SELECT *\n $indent FROM $source\n$(indent) LIMIT $(q.limit[1])"
 end
 
 function translatesql(q::OffsetNode, offset::Int=0)
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
-    limit = "LIMIT -1 OFFSET $(q.offset)"
+    @assert length(q.offset) == 1
+    @assert isa(q.offset[1], Integer)
+    limit = "LIMIT -1 OFFSET $(q.offset[1])"
     "SELECT *\n $indent FROM $source\n$(indent) $limit"
 end
 
