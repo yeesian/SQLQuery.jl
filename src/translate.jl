@@ -15,33 +15,31 @@ function ident(identifier::Expr)
     string(identifier)
 end
 
-# should process this properly in the future
-_sqlexpr(ex::QueryArg) = "$ex"
-
 translatesql(q::Symbol, offset::Int) = ident(q) # table-name
 _translatesubquery(q::Symbol, offset::Int) = ident(q)
 _translatesubquery(q::QueryNode, offset::Int) = "($(translatesql(q, offset)))"
 
 _selectarg(a::Symbol) = string(a) # assume it corresponds to a column-name
-
+_selectarg(a::Int) = string(a) # column-number (discouraged, but allowed)
 function _selectarg(a::Expr)
     if a.head == :kw # newcol=col (SELECT col AS newcol)
         @assert length(a.args) == 2
         newcol,expr = a.args
         @assert isa(newcol, Symbol)
         return "$(_sqlexpr(expr)) AS $newcol"
-    else
-        @assert a.head == :. # table.columnname
+    elseif a.head == :. # table.columnname
         return ident(a)
+    else # allow for functions
+        return _sqlexpr(a)
     end
 end
 
 "Returns `true` is the last GROUP BY argument a `having(...)` expression"
-_groupbyhaving(arg::QueryArg) =
+_groupbyhaving(arg) =
     isa(arg, Expr) && arg.head == :call && arg.args[1] == :having
 
 _orderbyterm(term::Symbol) = ident(term)
-function _orderbyterm(term::QueryArg)
+function _orderbyterm(term)
     if isa(term, Expr) && term.head == :call
         @assert length(term.args) == 2 "invalid orderby term: $term"
         order, identifier = term.args
