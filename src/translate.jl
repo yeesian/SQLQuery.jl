@@ -18,30 +18,12 @@ end
 # should process this properly in the future
 _sqlexpr(ex::QueryArg) = "$ex"
 
-function _translatesubquery(q::QueryNode, offset::Int)
-    if isa(q.input, Symbol)
-        return ident(q.input)
-    else
-        @assert isa(q.input, QueryNode)
-        return "($(translatesql(q.input, offset)))"
-    end
-end
+translatesql(q::Symbol, offset::Int) = ident(q) # table-name
+_translatesubquery(q::Symbol, offset::Int) = ident(q)
+_translatesubquery(q::QueryNode, offset::Int) =
+    "($(translatesql(q.input, offset)))"
 
-"Returns the prefix to the SELECT clause (if any): either of DISTINCT/ALL"
-function _selectprefix(q::SelectNode)
-    # Two Expr Possibilities: either 
-    #    (i) newcol = f(colname)      (satisfies .head == :kw)
-    #   (ii) distinct/all(columns...) (satisfies .head == :call)
-    # we check for the second kind here
-    if isa(q.args[1], Expr) && q.args[1].head == :call
-        clause = q.args[1].args[1]
-        clause == :distinct && return "DISTINCT "
-        clause == :all && return "ALL "
-    end
-    "" # returns nothing by default
-end
-
-_selectarg(a::Symbol) = "$a" # assume it corresponds to a column-name
+_selectarg(a::Symbol) = string(a) # assume it corresponds to a column-name
 
 function _selectarg(a::Expr)
     if a.head == :kw # newcol=col (SELECT col AS newcol)
@@ -49,10 +31,9 @@ function _selectarg(a::Expr)
         newcol,expr = a.args
         @assert isa(newcol, Symbol)
         return "$(_sqlexpr(expr)) AS $newcol"
-    elseif a.head == :. # table.columnname
-        return ident(a)
     else
-        error("unidentified SELECT result-column: $a")
+        @assert a.head == :. # table.columnname
+        return ident(a)
     end
 end
 
@@ -121,7 +102,7 @@ end
 function translatesql(q::FilterNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't filter by nothing"
     indent = " " ^ offset
-    source = _translatesubquery(q, offset+8)
+    source = _translatesubquery(q.input, offset+8)
     # TODO: should properly parse q.args
     conditions = join(q.args, "\n$(indent)   AND ")
     "SELECT *\n $indent FROM $source\n$indent WHERE $conditions"
@@ -130,20 +111,23 @@ end
 function translatesql(q::SelectNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't select by nothing"
     indent = " " ^ offset
-    prefix = _selectprefix(q) # "distinct"/"all"/""
-    source = _translatesubquery(q, offset+8)
-    resultcolumns = if prefix == ""
-        join(map(_selectarg, q.args), ",\n $indent      ")
-    else
-        join(map(_selectarg, exfargs(q.args[1])), ",\n $indent      ")
-    end
-    "SELECT $prefix$resultcolumns\n $indent FROM $source"
+    source = _translatesubquery(q.input, offset+8)
+    resultcolumns = join(map(_selectarg, q.args), ",\n $indent      ")
+    "SELECT $resultcolumns\n $indent FROM $source"
+end
+
+function translatesql(q::DistinctNode, offset::Int=0)
+    @assert length(q.args) > 0 "you shouldn't select by nothing"
+    indent = " " ^ offset; pad = " " ^ 9
+    source = _translatesubquery(q.input, offset+8)
+    resultcolumns = join(map(_selectarg, q.args), ",\n $indent$pad      ")
+    "SELECT DISTINCT $resultcolumns\n $indent FROM $source"
 end
 
 function translatesql(q::GroupbyNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't groupby nothing"
     indent = " " ^ offset
-    source = _translatesubquery(q, offset+10)
+    source = _translatesubquery(q.input, offset+10)
     lastarg = q.args[end]
     groupby = if _groupbyhaving(lastarg)
         groupbyargs = q.args[1:end-1]
@@ -162,20 +146,20 @@ end
 function translatesql(q::OrderbyNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't order by nothing"
     indent = " " ^ offset
-    source = _translatesubquery(q, offset+10)
+    source = _translatesubquery(q.input, offset+10)
     orderby = join(map(_orderbyterm, q.args), ",\n $indent        ")
     "  SELECT *\n   $indent FROM $source\n$(indent)ORDER BY $orderby"
 end
 
 function translatesql(q::LimitNode, offset::Int=0)
     indent = " " ^ offset
-    source = _translatesubquery(q, offset+8)
+    source = _translatesubquery(q.input, offset+8)
     "SELECT *\n $indent FROM $source\n$(indent) LIMIT $(q.limit)"
 end
 
 function translatesql(q::OffsetNode, offset::Int=0)
     indent = " " ^ offset
-    source = _translatesubquery(q, offset+8)
+    source = _translatesubquery(q.input, offset+8)
     limit = "LIMIT -1 OFFSET $(q.offset)"
     "SELECT *\n $indent FROM $source\n$(indent) $limit"
 end
@@ -183,6 +167,6 @@ end
 function translatesql(q::JoinNode, offset::Int=0)
     indent = " " ^ offset
     join, table, on, by = _parsejoin(q, offset)
-    source = _translatesubquery(q, offset+8)
+    source = _translatesubquery(q.input, offset+8)
     "SELECT *\n $indent FROM $source\n       $indent$join $table$on$by"
 end

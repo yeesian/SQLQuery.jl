@@ -13,6 +13,11 @@ module SQLQuery
         args::QueryArgs
     end
 
+    type DistinctNode{T} <: QueryNode{T}
+        input::T
+        args::QueryArgs
+    end
+
     type FilterNode{T} <: QueryNode{T}
         input::T
         args::Vector{Expr}
@@ -61,6 +66,7 @@ module SQLQuery
     Base.show(io::IO, q::QueryNode) = print(io, translatesql(q))
 
     QUERYNODE = Dict(:select => SelectNode,
+                     :distinct => DistinctNode,
                      :filter => FilterNode,
                      :groupby => GroupbyNode,
                      :orderby => OrderbyNode,
