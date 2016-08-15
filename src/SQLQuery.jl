@@ -8,9 +8,6 @@ module SQLQuery
     typealias QueryArgs Vector{QueryArg}
     typealias QuerySource Union{Symbol, QueryNode}
 
-        exf(ex::Expr) = ex.args[1]
-    exfargs(ex::Expr) = ex.args[2:end]
-
     type SelectNode{T} <: QueryNode{T}
         input::T
         args::QueryArgs
@@ -33,12 +30,12 @@ module SQLQuery
 
     type LimitNode{T} <: QueryNode{T}
         input::T
-        limit::Int
+        limit::Vector{Int}
     end
 
     type OffsetNode{T} <: QueryNode{T}
         input::T
-        offset::Int
+        offset::Vector{Int}
     end
 
     type LeftJoinNode{T} <: JoinNode{T}
@@ -63,10 +60,41 @@ module SQLQuery
 
     Base.show(io::IO, q::QueryNode) = print(io, translatesql(q))
 
-    const QUERYTYPES = Set([:select, :filter, :groupby, :orderby, :limit,
-                            :offset, :leftjoin, :outerjoin, :innerjoin,
-                            :crossjoin])
-    
-    include("query.jl")
+    QUERYNODE = Dict(:select => SelectNode,
+                     :filter => FilterNode,
+                     :groupby => GroupbyNode,
+                     :orderby => OrderbyNode,
+                     :limit => LimitNode,
+                     :offset => OffsetNode,
+                     :leftjoin => LeftJoinNode,
+                     :outerjoin => OuterJoinNode,
+                     :innerjoin => InnerJoinNode,
+                     :crossjoin => CrossJoinNode)
+
+        exf(ex::Expr) = ex.args[1]
+    exfargs(ex::Expr) = ex.args[2:end]
+
+    macro sqlquery(args...)
+        @assert isa(args, Tuple{Expr}) "Invalid Query Expression"
+        _sqlquery(args)
+    end
+
+    _sqlquery(expr::Symbol) = expr
+    _sqlquery(expr::Tuple{Expr}) = _sqlquery(expr[1])
+
+    function _sqlquery(ex::Expr)
+        @assert ex.head == :call
+        pipe = exf(ex); args = exfargs(ex)
+        @assert pipe == :|>
+        @assert length(args) == 2
+        subquery, verb = args
+        source = _sqlquery(subquery)
+        @assert isa(source, QuerySource)
+        @assert isa(verb, Expr)
+        @assert verb.head == :call
+        querytype = exf(verb); queryargs = exfargs(verb)
+        QUERYNODE[querytype]{typeof(source)}(source, queryargs)
+    end
+
     include("translate.jl")
 end

@@ -7,6 +7,34 @@ http://www.sqlstyle.guide/ as far as possible.
 
 This package is currently under development and is not registered.
 
+It allows for user-defined verbs (e.g. to capture common SQL idioms) that composes well with the rest of the verbs provided here. It is the intention of this package to allow for further customizations (e.g. different string or identifier quotes, or to recognize [additional functions](http://www.gaia-gis.it/gaia-sins/spatialite-sql-4.3.0.html) for different backends).
+
+```julia
+  | | |_| | | | (_| |  |  Version 0.5.0-rc1+1 (2016-08-05 15:23 UTC)
+ _/ |\__'_|_|_|\__'_|  |  Commit acfd04c (9 days old release-0.5)
+|__/                   |  x86_64-apple-darwin13.4.0
+
+julia> using SQLQuery
+
+julia> type NewNode{T} <: SQLQuery.QueryNode
+           input::T
+           args
+       end
+
+julia> SQLQuery.QUERYNODE[:newnode] = NewNode
+NewNode{T}
+
+julia> SQLQuery.translatesql(nn::NewNode, offset::Int) = "newnode, offset=$offset"
+
+julia> @sqlquery source |> newnode(are, you.serious) |> select(*, some, columns)
+SELECT *,
+       some,
+       columns
+  FROM (newnode, offset=8)
+```
+
+Some other examples:
+
 ```julia
   | | |_| | | | (_| |  |  Version 0.5.0-rc1+1 (2016-08-05 15:23 UTC)
  _/ |\__'_|_|_|\__'_|  |  Commit acfd04c (8 days old release-0.5)
