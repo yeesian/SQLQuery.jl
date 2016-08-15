@@ -1,18 +1,42 @@
-_sqlexpr(ex::Real) = string(ex)
-_sqlexpr(ex::String) = ex
-_sqlexpr(ex::Symbol) = string(ex)
 
-function _unrecognizedexpr(ex::Expr)
-    warn("Unrecognized expression: $ex")
-    return "$ex"
+function _sqlexprargs(ex::Expr)
+    @assert ex.head == :call
+    join(map(_sqlexpr,exfargs(ex)),",")
 end
+
+_sqlexpr(ex::Real) = string(ex)
+_sqlexpr(ex::String) = "\'$ex\'"
+_sqlexpr(ex::Symbol) = string(ex)
 
 function _sqlexpr(ex::Expr)
     if ex.head == :call
         f = exf(ex); args = exfargs(ex)
-        return get(SQLFUNCTION, f, _unrecognizedexpr)(ex)
+        return get(SQLFUNCTION, f, _trysqlitefunction)(ex)
+    elseif ex.head == :.
+        return ident(ex)
     end
     error("Unrecognized expression: $ex")
+end
+
+function _trysqlitefunction(ex::Expr)
+    if ex.head == :call
+        f = exf(ex); args = exfargs(ex)
+        return get(SQLITEFUNCTION, f, _tryuserfunction)(ex)
+    end
+    error("Unrecognized expression: $ex")
+end
+
+function _tryuserfunction(ex::Expr)
+    if ex.head == :call
+        f = exf(ex); args = exfargs(ex)
+        return get(USERFUNCTION, f, _unrecognizedexpr)(ex)
+    end
+    error("Unrecognized expression: $ex")
+end
+
+function _unrecognizedexpr(ex::Expr)
+    warn("Unrecognized expression: $ex")
+    return "$ex"
 end
 
 function _is(ex::Expr)
@@ -43,10 +67,29 @@ function _notnull(ex::Expr)
     "($(_sqlexpr(ex.args[2])) NOTNULL)"
 end
 
+"""
+The like() function is used to implement the \"Y LIKE X [ESCAPE Z]\" expression.
+
+If the optional ESCAPE clause is present, then the like() function is invoked
+with three arguments. Otherwise, it is invoked with two arguments only. Note 
+that the X and Y parameters are reversed in the like() function relative to the
+infix LIKE operator.
+
+The sqlite3_create_function() interface can be used to override the like() 
+function and thereby change the operation of the LIKE operator. When overriding
+the like() function, it may be important to override both the two and three 
+argument versions of the like() function. Otherwise, different code may be 
+called to implement the LIKE operator depending on whether or not an ESCAPE
+clause was specified.
+"""
 function _like(ex::Expr)
     @assert ex.head == :call
-    @assert length(args) == 3
-    "($(_sqlexpr(ex.args[2])) LIKE $(_sqlexpr(ex.args[3])))"
+    if length(ex.args) == 3
+        return "($(_sqlexpr(ex.args[2])) LIKE $(_sqlexpr(ex.args[3])))"
+    else
+        @assert length(ex.args) == 4 # for SQLite
+        return "like($(_sqlexprargs(ex)))"
+    end
 end
 
 function _glob(ex::Expr)
@@ -98,10 +141,10 @@ function _binaryop(ex::Expr)
     @assert length(ex.args) == 3
     op = exf(ex); left, right = exfargs(ex)
     @assert in(op, binaryops)
-    "$(_sqlexpr(left))$op$(_sqlexpr(right))"
+    "$(_sqlexpr(left)) $op $(_sqlexpr(right))"
 end
 
-SQLFUNCTION = Dict{Symbol, Function}(
+const SQLFUNCTION = Dict{Symbol, Function}(
     :is =>      _is,
     :not =>     _not,
     :isnull =>  _isnull,
@@ -135,3 +178,5 @@ SQLFUNCTION = Dict{Symbol, Function}(
     :(+) =>     _operator,
     :(-) =>     _operator
 )
+
+USERFUNCTION = Dict{Symbol, Function}()

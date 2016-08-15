@@ -47,7 +47,7 @@ julia> @sqlquery source |>
 SELECT *
   FROM source
  WHERE name == 3
-   AND bar == "whee"
+   AND bar == 'whee'
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
@@ -57,7 +57,7 @@ SELECT foo * 3 AS name,
   FROM (SELECT *
           FROM source
          WHERE name == 3
-           AND bar == "whee")
+           AND bar == 'whee')
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
@@ -67,7 +67,7 @@ SELECT DISTINCT foo * 3 AS name,
   FROM (SELECT *
           FROM source
          WHERE name == 3
-           AND bar == "whee")
+           AND bar == 'whee')
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
@@ -77,7 +77,7 @@ SELECT foo * 3 AS name,
   FROM (SELECT *
           FROM source
          WHERE name == 3
-           AND bar == "whee")
+           AND bar == 'whee')
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
@@ -86,7 +86,7 @@ SELECT *
   FROM (SELECT *
           FROM source
          WHERE name == 3
-           AND bar == "whee")
+           AND bar == 'whee')
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
@@ -95,7 +95,7 @@ SELECT DISTINCT *
   FROM (SELECT *
           FROM source
          WHERE name == 3
-           AND bar == "whee")
+           AND bar == 'whee')
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
@@ -104,7 +104,7 @@ SELECT DISTINCT col
   FROM (SELECT *
           FROM source
          WHERE name == 3
-           AND bar == "whee")
+           AND bar == 'whee')
 
 julia> @sqlquery source |>
        filter(name == 3, bar == "whee") |>
@@ -116,7 +116,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name
 
 julia> @sqlquery source |>
@@ -129,7 +129,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name,
          col
 
@@ -143,7 +143,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name DESC
 
 julia> @sqlquery source |>
@@ -156,7 +156,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name,
          col DESC
 
@@ -170,7 +170,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name DESC,
          col DESC
 
@@ -184,7 +184,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name DESC,
          col ASC
 
@@ -198,7 +198,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name ASC,
          col ASC
 
@@ -212,7 +212,7 @@ julia> @sqlquery source |>
             FROM (SELECT *
                     FROM source
                    WHERE name == 3
-                     AND bar == "whee"))
+                     AND bar == 'whee'))
 ORDER BY name DESC
 
 julia> @sqlquery source |>
@@ -227,7 +227,7 @@ SELECT *
                     FROM (SELECT *
                             FROM source
                            WHERE name == 3
-                             AND bar == "whee"))
+                             AND bar == 'whee'))
         ORDER BY name DESC)
  LIMIT 10
 
@@ -243,10 +243,9 @@ SELECT *
                     FROM (SELECT *
                             FROM source
                            WHERE name == 3
-                             AND bar == "whee"))
+                             AND bar == 'whee'))
         ORDER BY name DESC)
  LIMIT -1 OFFSET 7
-
 
 julia> @sqlquery Artists |>
        leftjoin(Songs) |>

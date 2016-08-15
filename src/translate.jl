@@ -65,11 +65,10 @@ function _parsejoinargs(q::JoinNode, offset::Int)
         @assert constraint.head == :call
         cons = exf(constraint); args = exfargs(constraint)
         if cons == :on
-            # TODO: parse the arguments here
-            on = "\n$(indent)ON $(join(args, "\n $indent  AND "))"
+            on = "\n$(indent)ON $(join(map(_sqlexpr,args), "\n $indent  AND "))"
         else
             @assert cons == :by
-            columnnames = join(map(ident,args),",\n       $indent")
+            columnnames = join(map(ident, args), ",\n       $indent")
             by = "\n$(indent)USING ($columnnames)"
         end
     end
@@ -100,8 +99,7 @@ function translatesql(q::FilterNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't filter by nothing"
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
-    # TODO: should properly parse q.args
-    conditions = join(q.args, "\n$(indent)   AND ")
+    conditions = join(map(_sqlexpr, q.args), "\n$(indent)   AND ")
     "SELECT *\n $indent FROM $source\n$indent WHERE $conditions"
 end
 
@@ -129,10 +127,9 @@ function translatesql(q::GroupbyNode, offset::Int=0)
     groupby = if _groupbyhaving(lastarg)
         groupbyargs = q.args[1:end-1]
         @assert length(groupbyargs) > 0
-        havingargs = exfargs(lastarg)
+        havingargs = join(map(_sqlexpr, exfargs(lastarg)), "\n $indent    AND ")
         @assert length(havingargs) > 0
-        # TODO: should properly parse havingargs
-        conditions = "HAVING $(join(havingargs, "\n $indent    AND "))"
+        conditions = "HAVING $havingargs"
         "GROUP BY $(join(map(ident, groupbyargs), ", "))\n $conditions"
     else
         "GROUP BY $(join(map(ident, q.args), ", "))"
