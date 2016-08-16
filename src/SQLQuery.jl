@@ -103,4 +103,5 @@ module SQLQuery
     include("translate.jl")
     include("expressions.jl")
     include("sqlitefunctions.jl")
+    include("spatialitefunctions.jl")
 end

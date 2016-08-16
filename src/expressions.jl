@@ -10,8 +10,11 @@ _sqlexpr(ex::Symbol) = string(ex)
 
 function _sqlexpr(ex::Expr)
     if ex.head == :call
-        f = exf(ex); args = exfargs(ex)
-        return get(SQLFUNCTION, f, _trysqlitefunction)(ex)
+        return get(SQLFUNCTION, exf(ex), _trysqlitefunction)(ex)
+    elseif ex.head == :(||)
+        return get(SQLFUNCTION, ex.head, _trysqlitefunction)(ex)
+    elseif ex.head == :comparison
+        return get(SQLFUNCTION, ex.args[2], _trysqlitefunction)(ex)
     elseif ex.head == :.
         return ident(ex)
     end
@@ -20,16 +23,21 @@ end
 
 function _trysqlitefunction(ex::Expr)
     if ex.head == :call
-        f = exf(ex); args = exfargs(ex)
-        return get(SQLITEFUNCTION, f, _tryuserfunction)(ex)
+        return get(SQLITEFUNCTION, exf(ex), _tryspatialitefunction)(ex)
+    end
+    error("Unrecognized expression: $ex")
+end
+
+function _tryspatialitefunction(ex::Expr)
+    if ex.head == :call
+        return get(SPATIALITEFUNCTION, exf(ex), _tryuserfunction)(ex)
     end
     error("Unrecognized expression: $ex")
 end
 
 function _tryuserfunction(ex::Expr)
     if ex.head == :call
-        f = exf(ex); args = exfargs(ex)
-        return get(USERFUNCTION, f, _unrecognizedexpr)(ex)
+        return get(USERFUNCTION, exf(ex), _unrecognizedexpr)(ex)
     end
     error("Unrecognized expression: $ex")
 end
@@ -122,6 +130,8 @@ function _operator(ex::Expr)
         return _unaryop(ex)
     else
         @assert length(ex.args) == 3
+        @assert ex.head == :call
+        @assert in(exf(ex), [:(+), :(-)])
         return _binaryop(ex)
     end
 end
@@ -135,13 +145,27 @@ function _unaryop(ex::Expr)
 end
 
 function _binaryop(ex::Expr)
-    const binaryops = Set(Symbol[:(||),:(*),:(/),:(%), :(+),:(-), :(<<),:(>>),
-                                 :(&), :(|),:(<),:(<=),:(>),:(>=),:(==),:(!=)])
+    const binaryops = Set([:(*),:(/),:(%),:(+),:(-),:(<<),:(>>),:(&),:(|)])
     @assert ex.head == :call
     @assert length(ex.args) == 3
     op = exf(ex); left, right = exfargs(ex)
     @assert in(op, binaryops)
     "$(_sqlexpr(left)) $op $(_sqlexpr(right))"
+end
+
+function _binarycomparison(ex::Expr)
+    const binarycomparisons = Set(Symbol[:(<),:(<=),:(>),:(>=),:(==),:(!=)])
+    if ex.head == :comparison # for v0.4
+        @assert length(ex.args) == 3
+        op = ex.args[2]; left, right = ex.args[[1,3]]
+        @assert in(op, binarycomparisons)
+        return "$(_sqlexpr(left)) $op $(_sqlexpr(right))"
+    else # for v0.5
+        @assert length(ex.args) == 3
+        op = exf(ex); left, right = exfargs(ex)
+        @assert in(op, binarycomparisons)
+        return "$(_sqlexpr(left)) $op $(_sqlexpr(right))"
+    end
 end
 
 const SQLFUNCTION = Dict{Symbol, Function}(
@@ -155,8 +179,8 @@ const SQLFUNCTION = Dict{Symbol, Function}(
     :match =>   _match,
     :cast =>    _cast,
 
-    # binary operators
-    :(||) =>    _binaryop,
+    # :(||) and :(&&) are short-circuiting operators, and hence different
+    :(||) =>    ex -> "$(_sqlexpr(ex.args[1])) || $(_sqlexpr(ex.args[2]))"
     :(*) =>     _binaryop,
     :(/) =>     _binaryop,
     :(%) =>     _binaryop,
@@ -164,12 +188,13 @@ const SQLFUNCTION = Dict{Symbol, Function}(
     :(>>) =>    _binaryop,
     :(&) =>     _binaryop,
     :(|) =>     _binaryop,
-    :(<) =>     _binaryop,
-    :(<=) =>    _binaryop,
-    :(>) =>     _binaryop,
-    :(>=) =>    _binaryop,
-    :(==) =>    _binaryop,
-    :(!=) =>    _binaryop,
+    :(>) =>     _binarycomparison,
+    :(<) =>     _binarycomparison,
+    :(<=) =>    _binarycomparison,
+    :(>) =>     _binarycomparison,
+    :(>=) =>    _binarycomparison,
+    :(==) =>    _binarycomparison,
+    :(!=) =>    _binarycomparison,
 
     # unary operators
     :(~) =>     _unaryop,
