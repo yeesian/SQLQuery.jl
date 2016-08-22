@@ -34,9 +34,21 @@ function _selectarg(a::Expr)
     end
 end
 
+function _groupbyaggregate(args)
+    for arg in args
+        if isa(arg, Expr) && arg.head == :call && exf(arg) == :aggregate
+            return map(_selectarg, exfargs(arg))
+        end
+    end
+    error("We do not support groupby without any aggregate terms.")
+end
+
+_groupbycolumns(args) =
+    map(ident, filter(a -> !(isa(a, Expr) && a.head == :call), args))
+
 "Returns `true` is the last GROUP BY argument a `having(...)` expression"
 _groupbyhaving(arg) =
-    isa(arg, Expr) && arg.head == :call && arg.args[1] == :having
+    isa(arg, Expr) && arg.head == :call && exf(arg) == :having
 
 _orderbyterm(term::Symbol) = ident(term)
 function _orderbyterm(term)
@@ -124,17 +136,17 @@ function translatesql(q::GroupbyNode, offset::Int=0)
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+10)
     lastarg = q.args[end]
+    resultcolumns = join(_groupbyaggregate(q.args), ",\n $indent        ")
+    groupbycolumns = join(_groupbycolumns(q.args), ",\n $indent        ")
     groupby = if _groupbyhaving(lastarg)
-        groupbyargs = q.args[1:end-1]
-        @assert length(groupbyargs) > 0
         havingargs = join(map(_sqlexpr, exfargs(lastarg)), "\n $indent    AND ")
         @assert length(havingargs) > 0
-        conditions = "HAVING $havingargs"
-        "GROUP BY $(join(map(ident, groupbyargs), ", "))\n $conditions"
+        conditions = "\n$indent  HAVING $havingargs"
+        "GROUP BY $groupbycolumns$conditions"
     else
-        "GROUP BY $(join(map(ident, q.args), ", "))"
+        "GROUP BY $groupbycolumns"
     end
-    "  SELECT *\n   $indent FROM $source\n$(indent)$groupby"
+    "  SELECT $resultcolumns\n   $indent FROM $source\n$indent$groupby"
 end
 
 function translatesql(q::OrderbyNode, offset::Int=0)
