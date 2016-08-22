@@ -15,33 +15,43 @@ function ident(identifier::Expr)
     string(identifier)
 end
 
-# should process this properly in the future
-_sqlexpr(ex::QueryArg) = "$ex"
-
 translatesql(q::Symbol, offset::Int) = ident(q) # table-name
 _translatesubquery(q::Symbol, offset::Int) = ident(q)
 _translatesubquery(q::QueryNode, offset::Int) = "($(translatesql(q, offset)))"
 
 _selectarg(a::Symbol) = string(a) # assume it corresponds to a column-name
-
+_selectarg(a::Int) = string(a) # column-number (discouraged, but allowed)
 function _selectarg(a::Expr)
     if a.head == :kw # newcol=col (SELECT col AS newcol)
         @assert length(a.args) == 2
         newcol,expr = a.args
         @assert isa(newcol, Symbol)
         return "$(_sqlexpr(expr)) AS $newcol"
-    else
-        @assert a.head == :. # table.columnname
+    elseif a.head == :. # table.columnname
         return ident(a)
+    else # allow for functions
+        return _sqlexpr(a)
     end
 end
 
+function _groupbyaggregate(args)
+    for arg in args
+        if isa(arg, Expr) && arg.head == :call && exf(arg) == :aggregate
+            return map(_selectarg, exfargs(arg))
+        end
+    end
+    error("We do not support groupby without any aggregate terms.")
+end
+
+_groupbycolumns(args) =
+    map(ident, filter(a -> !(isa(a, Expr) && a.head == :call), args))
+
 "Returns `true` is the last GROUP BY argument a `having(...)` expression"
-_groupbyhaving(arg::QueryArg) =
-    isa(arg, Expr) && arg.head == :call && arg.args[1] == :having
+_groupbyhaving(arg) =
+    isa(arg, Expr) && arg.head == :call && exf(arg) == :having
 
 _orderbyterm(term::Symbol) = ident(term)
-function _orderbyterm(term::QueryArg)
+function _orderbyterm(term)
     if isa(term, Expr) && term.head == :call
         @assert length(term.args) == 2 "invalid orderby term: $term"
         order, identifier = term.args
@@ -67,11 +77,10 @@ function _parsejoinargs(q::JoinNode, offset::Int)
         @assert constraint.head == :call
         cons = exf(constraint); args = exfargs(constraint)
         if cons == :on
-            # TODO: parse the arguments here
-            on = "\n$(indent)ON $(join(args, "\n $indent  AND "))"
+            on = "\n$(indent)ON $(join(map(_sqlexpr,args), "\n $indent  AND "))"
         else
             @assert cons == :by
-            columnnames = join(map(ident,args),",\n       $indent")
+            columnnames = join(map(ident, args), ",\n       $indent")
             by = "\n$(indent)USING ($columnnames)"
         end
     end
@@ -102,8 +111,7 @@ function translatesql(q::FilterNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't filter by nothing"
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
-    # TODO: should properly parse q.args
-    conditions = join(q.args, "\n$(indent)   AND ")
+    conditions = join(map(_sqlexpr, q.args), "\n$(indent)   AND ")
     "SELECT *\n $indent FROM $source\n$indent WHERE $conditions"
 end
 
@@ -128,18 +136,17 @@ function translatesql(q::GroupbyNode, offset::Int=0)
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+10)
     lastarg = q.args[end]
+    resultcolumns = join(_groupbyaggregate(q.args), ",\n $indent        ")
+    groupbycolumns = join(_groupbycolumns(q.args), ",\n $indent        ")
     groupby = if _groupbyhaving(lastarg)
-        groupbyargs = q.args[1:end-1]
-        @assert length(groupbyargs) > 0
-        havingargs = exfargs(lastarg)
+        havingargs = join(map(_sqlexpr, exfargs(lastarg)), "\n $indent    AND ")
         @assert length(havingargs) > 0
-        # TODO: should properly parse havingargs
-        conditions = "HAVING $(join(havingargs, "\n $indent    AND "))"
-        "GROUP BY $(join(map(ident, groupbyargs), ", "))\n $conditions"
+        conditions = "\n$indent  HAVING $havingargs"
+        "GROUP BY $groupbycolumns$conditions"
     else
-        "GROUP BY $(join(map(ident, q.args), ", "))"
+        "GROUP BY $groupbycolumns"
     end
-    "  SELECT *\n   $indent FROM $source\n$(indent)$groupby"
+    "  SELECT $resultcolumns\n   $indent FROM $source\n$indent$groupby"
 end
 
 function translatesql(q::OrderbyNode, offset::Int=0)

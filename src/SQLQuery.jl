@@ -4,18 +4,16 @@ module SQLQuery
 
      abstract QueryNode{T}
      abstract JoinNode{T} <: QueryNode{T}
-    typealias QueryArg Union{Symbol, Expr}
-    typealias QueryArgs Vector{QueryArg}
     typealias QuerySource Union{Symbol, QueryNode}
 
     type SelectNode{T} <: QueryNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     type DistinctNode{T} <: QueryNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     type FilterNode{T} <: QueryNode{T}
@@ -25,12 +23,12 @@ module SQLQuery
 
     type GroupbyNode{T} <: QueryNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     type OrderbyNode{T} <: QueryNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     type LimitNode{T} <: QueryNode{T}
@@ -45,22 +43,22 @@ module SQLQuery
 
     type LeftJoinNode{T} <: JoinNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     type OuterJoinNode{T} <: JoinNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     type InnerJoinNode{T} <: JoinNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     type CrossJoinNode{T} <: JoinNode{T}
         input::T
-        args::QueryArgs
+        args::Vector
     end
 
     Base.show(io::IO, q::QueryNode) = print(io, translatesql(q))
@@ -103,4 +101,7 @@ module SQLQuery
     end
 
     include("translate.jl")
+    include("expressions.jl")
+    include("sqlitefunctions.jl")
+    include("spatialitefunctions.jl")
 end
