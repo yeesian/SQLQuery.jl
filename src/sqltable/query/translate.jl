@@ -16,11 +16,16 @@ function ident(identifier::Expr)
 end
 
 # should process this properly in the future
-_sqlexpr(ex::QueryArg) = "$ex"
+_sqlexpr(ex::jplyr.QueryArg) = "$ex"
 
 translatesql(q::Symbol, offset::Int) = ident(q) # table-name
 _translatesubquery(q::Symbol, offset::Int) = ident(q)
-_translatesubquery(q::QueryNode, offset::Int) = "($(translatesql(q, offset)))"
+function _translatesubquery(q::jplyr.DataNode, offset::Int)
+    src = q.input
+    isa(src, SQLTable) || error()
+    return src.tbl_name
+end
+_translatesubquery(q::jplyr.QueryNode, offset::Int) = "($(translatesql(q, offset)))"
 
 _selectarg(a::Symbol) = string(a) # assume it corresponds to a column-name
 
@@ -37,11 +42,11 @@ function _selectarg(a::Expr)
 end
 
 "Returns `true` is the last GROUP BY argument a `having(...)` expression"
-_groupbyhaving(arg::QueryArg) =
+_groupbyhaving(arg::jplyr.QueryArg) =
     isa(arg, Expr) && arg.head == :call && arg.args[1] == :having
 
 _orderbyterm(term::Symbol) = ident(term)
-function _orderbyterm(term::QueryArg)
+function _orderbyterm(term::jplyr.QueryArg)
     if isa(term, Expr) && term.head == :call
         @assert length(term.args) == 2 "invalid orderby term: $term"
         order, identifier = term.args
@@ -53,7 +58,7 @@ function _orderbyterm(term::QueryArg)
     error("Unable to parse orderby term: $term")
 end
 
-function _parsejoinargs(q::JoinNode, offset::Int)
+function _parsejoinargs(q::jplyr.JoinNode, offset::Int)
     nargs = length(q.args)
     @assert nargs > 0
     @assert isa(q.args[1], Symbol) "only support joining to a table-alias"
@@ -78,27 +83,27 @@ function _parsejoinargs(q::JoinNode, offset::Int)
     source, on, by
 end
 
-function _parsejoin(q::LeftJoinNode, offset::Int=0)
+function _parsejoin(q::jplyr.LeftJoinNode, offset::Int=0)
     source, on, by = _parsejoinargs(q, offset+17)
     "LEFT JOIN", source, on, by
 end
 
-function _parsejoin(q::OuterJoinNode, offset::Int=0)
+function _parsejoin(q::jplyr.OuterJoinNode, offset::Int=0)
     source, on, by = _parsejoinargs(q, offset+23)
     "LEFT OUTER JOIN", source, on, by
 end
 
-function _parsejoin(q::InnerJoinNode, offset::Int=0)
+function _parsejoin(q::jplyr.InnerJoinNode, offset::Int=0)
     source, on, by = _parsejoinargs(q, offset+18)
     "INNER JOIN", source, on, by
 end
 
-function _parsejoin(q::CrossJoinNode, offset::Int=0)
+function _parsejoin(q::jplyr.CrossJoinNode, offset::Int=0)
     source, on, by = _parsejoinargs(q, offset+18)
     "CROSS JOIN", source, on, by
 end
 
-function translatesql(q::FilterNode, offset::Int=0)
+function translatesql(q::jplyr.FilterNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't filter by nothing"
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
@@ -107,7 +112,7 @@ function translatesql(q::FilterNode, offset::Int=0)
     "SELECT *\n $indent FROM $source\n$indent WHERE $conditions"
 end
 
-function translatesql(q::SelectNode, offset::Int=0)
+function translatesql(q::jplyr.SelectNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't select by nothing"
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
@@ -115,7 +120,7 @@ function translatesql(q::SelectNode, offset::Int=0)
     "SELECT $resultcolumns\n $indent FROM $source"
 end
 
-function translatesql(q::DistinctNode, offset::Int=0)
+function translatesql(q::SQLQuery.DistinctNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't select by nothing"
     indent = " " ^ offset; pad = " " ^ 9
     source = _translatesubquery(q.input, offset+8)
@@ -123,7 +128,7 @@ function translatesql(q::DistinctNode, offset::Int=0)
     "SELECT DISTINCT $resultcolumns\n $indent FROM $source"
 end
 
-function translatesql(q::GroupbyNode, offset::Int=0)
+function translatesql(q::jplyr.GroupbyNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't groupby nothing"
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+10)
@@ -142,7 +147,7 @@ function translatesql(q::GroupbyNode, offset::Int=0)
     "  SELECT *\n   $indent FROM $source\n$(indent)$groupby"
 end
 
-function translatesql(q::OrderbyNode, offset::Int=0)
+function translatesql(q::jplyr.OrderbyNode, offset::Int=0)
     @assert length(q.args) > 0 "you shouldn't order by nothing"
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+10)
@@ -150,7 +155,7 @@ function translatesql(q::OrderbyNode, offset::Int=0)
     "  SELECT *\n   $indent FROM $source\n$(indent)ORDER BY $orderby"
 end
 
-function translatesql(q::LimitNode, offset::Int=0)
+function translatesql(q::SQLQuery.LimitNode, offset::Int=0)
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
     @assert length(q.limit) == 1
@@ -158,7 +163,7 @@ function translatesql(q::LimitNode, offset::Int=0)
     "SELECT *\n $indent FROM $source\n$(indent) LIMIT $(q.limit[1])"
 end
 
-function translatesql(q::OffsetNode, offset::Int=0)
+function translatesql(q::SQLQuery.OffsetNode, offset::Int=0)
     indent = " " ^ offset
     source = _translatesubquery(q.input, offset+8)
     @assert length(q.offset) == 1
@@ -167,7 +172,7 @@ function translatesql(q::OffsetNode, offset::Int=0)
     "SELECT *\n $indent FROM $source\n$(indent) $limit"
 end
 
-function translatesql(q::JoinNode, offset::Int=0)
+function translatesql(q::jplyr.JoinNode, offset::Int=0)
     indent = " " ^ offset
     join, table, on, by = _parsejoin(q, offset)
     source = _translatesubquery(q.input, offset+8)
